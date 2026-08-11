@@ -17,6 +17,14 @@ export const errorHandler = (
     return;
   }
 
+  const status =
+    (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
+
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    sendResponse(res, status, false, err.message);
+    return;
+  }
+
   console.error('[error]', err);
   sendResponse(res, 500, false, 'Internal server error');
 };
