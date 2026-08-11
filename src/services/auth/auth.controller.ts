@@ -11,11 +11,15 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     throw new AppError('Unauthorized access', 401);
   }
 
-  const user = await getUserBySub(payload.sub);
+  try {
+    const user = await getUserBySub(payload.sub);
 
-  if (user) {
-    sendResponse(res, 200, true, 'User fetched successfully', { user });
-    return;
+    if (user) {
+      sendResponse(res, 200, true, 'User fetched successfully', { user });
+      return;
+    }
+  } catch (err) {
+    console.error('[auth] getUserBySub failed, falling back to token payload:', err);
   }
 
   sendResponse(res, 200, true, 'User fetched from token', {
