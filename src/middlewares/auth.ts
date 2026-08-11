@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose-cjs';
 import { config } from '../config';
+import { sendResponse } from '../lib/response';
 
 const JWKS = createRemoteJWKSet(new URL(`${config.clientUrl}/api/auth/jwks`));
 
@@ -23,14 +24,14 @@ export const verifyToken = async (
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    res.status(401).json({ success: false, message: 'Unauthorized access', data: null });
+    sendResponse(res, 401, false, 'Unauthorized access');
     return;
   }
 
   const token = authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ success: false, message: 'Unauthorized access', data: null });
+    sendResponse(res, 401, false, 'Unauthorized access');
     return;
   }
 
@@ -38,7 +39,8 @@ export const verifyToken = async (
     const { payload } = await jwtVerify(token, JWKS);
     req.auth = payload as AuthPayload;
     next();
-  } catch {
-    res.status(401).json({ success: false, message: 'Unauthorized access', data: null });
+  } catch (err) {
+    console.error('[auth] verify failed:', err);
+    sendResponse(res, 401, false, 'Unauthorized access');
   }
 };

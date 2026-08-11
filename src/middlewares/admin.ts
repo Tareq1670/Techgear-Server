@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth';
+import { sendResponse } from '../lib/response';
 
 export const authorizeAdmin = (
   req: AuthRequest,
@@ -7,7 +8,7 @@ export const authorizeAdmin = (
   next: NextFunction,
 ): void => {
   if (req.auth?.role !== 'ADMIN') {
-    res.status(403).json({ success: false, message: 'Forbidden: Admin access required', data: null });
+    sendResponse(res, 403, false, 'Forbidden: Admin access required');
     return;
   }
   next();
