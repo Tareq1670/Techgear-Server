@@ -6,6 +6,8 @@ import authRoutes from '../services/auth/auth.routes';
 import userRoutes from '../services/user/user.routes';
 import categoryRoutes from '../services/category/category.routes';
 import productRoutes from '../services/product/product.routes';
+import reviewRoutes from '../services/review/review.routes';
+import orderRoutes from '../services/order/order.routes';
 
 const router: Router = Router();
 
@@ -13,6 +15,8 @@ router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/orders', orderRoutes);
 
 router.get('/', (_req: Request, res: Response) => {
   sendResponse(res, 200, true, 'TechGear API is running');

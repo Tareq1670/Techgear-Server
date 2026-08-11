@@ -1,0 +1,19 @@
+import { z } from 'zod';
+
+export const createOrderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid('productId must be a valid UUID'),
+        quantity: z
+          .number()
+          .int('quantity must be an integer')
+          .positive('quantity must be greater than 0'),
+      }),
+    )
+    .min(1, 'At least one item is required'),
+});
+
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']),
+});
