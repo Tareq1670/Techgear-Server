@@ -2,11 +2,13 @@ import { Router, Request, Response } from 'express';
 import { verifyToken, AuthRequest } from '../middlewares/auth';
 import { authorizeAdmin } from '../middlewares/admin';
 import { sendResponse } from '../lib/response';
-import authRoutes from './auth';
+import authRoutes from '../services/auth/auth.routes';
+import userRoutes from '../services/user/user.routes';
 
 const router: Router = Router();
 
 router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
 
 router.get('/', (_req: Request, res: Response) => {
   sendResponse(res, 200, true, 'TechGear API is running');
