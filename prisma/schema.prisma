@@ -26,6 +26,12 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum PaymentMethod {
+  CARD
+  PAYPAL
+  COD
+}
+
 // --- MODELS ---
 
 model User {
@@ -42,6 +48,8 @@ model User {
 
   reviews  Review[]
   orders   Order[]
+  products Product[] @relation("ProductSeller")
+  cart     Cart?
   sessions Session[]
   accounts Account[]
 
@@ -135,14 +143,18 @@ model Product {
   imageUrl    String?
   categoryId  String
   category    Category  @relation(fields: [categoryId], references: [id])
+  userId      String?
+  seller      User?     @relation("ProductSeller", fields: [userId], references: [id])
   isDeleted   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   reviews    Review[]
   orderItems OrderItem[]
+  cartItems  CartItem[]
 
   @@index([categoryId])
+  @@index([userId])
   @@map("products")
 }
 
@@ -164,14 +176,16 @@ model Review {
 }
 
 model Order {
-  id          String      @id @default(uuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  totalAmount Float
-  status      OrderStatus @default(PENDING)
-  isDeleted   Boolean     @default(false)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  totalAmount     Float
+  status          OrderStatus   @default(PENDING)
+  shippingAddress String        @default("")
+  paymentMethod   PaymentMethod @default(CARD)
+  isDeleted       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   items OrderItem[]
 
@@ -191,4 +205,29 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cartId    String
+  productId String
+  quantity  Int     @default(1)
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@index([productId])
+  @@map("cart_items")
 }

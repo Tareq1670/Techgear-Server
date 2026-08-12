@@ -12,6 +12,9 @@ export const createOrderSchema = z.object({
       }),
     )
     .min(1, 'At least one item is required'),
+  shippingAddress: z.string().trim().min(10, 'Shipping address is too short'),
+  paymentMethod: z.enum(['CARD', 'PAYPAL', 'COD']),
+  totalAmount: z.number().positive('totalAmount must be positive').optional(),
 });
 
 export const updateOrderStatusSchema = z.object({

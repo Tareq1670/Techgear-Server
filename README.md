@@ -66,7 +66,7 @@ src/
 ├── middlewares/           # auth.ts, admin.ts
 └── routes/                # Central router under /api
 prisma/
-├── schema.prisma          # Database schema (6 models, 2 enums)
+├── schema.prisma          # Database schema (models + enums)
 └── migrations/            # SQL migrations
 ```
 

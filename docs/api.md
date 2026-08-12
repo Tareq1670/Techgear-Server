@@ -16,8 +16,9 @@ Every response uses the envelope `{ success, message, data }`.
 
 ### Authentication
 
-- Most authenticated endpoints require `Authorization: Bearer <JWT>`.
-- The backend **verifies** JWTs issued by Better-Auth on the Next.js client against `{CLIENT_URL}/api/auth/jwks` — it never signs tokens, and there is no `JWT_SECRET`.
+Most authenticated endpoints require `Authorization: Bearer <JWT>`.
+
+**How auth works (delegated):** registration, login, password hashing, and JWT issuance are owned by **Better-Auth on the Next.js client** (sign-up / sign-in live at `{CLIENT_URL}/api/auth/*`). Passwords are hashed with Better-Auth's `hashPassword` (scrypt) into the shared `accounts` table. The Express backend **only verifies** the client-issued JWT against `{CLIENT_URL}/api/auth/jwks` — it never signs tokens, has no `JWT_SECRET`, and calls `req.auth.sub` the user (an id from the same `users` table).
 - `verifyToken` → 401 if the token is missing, malformed, expired, tampered, or fails remote verification.
 - `authorizeAdmin` (admin-only routes) → 403 unless the verified `role` claim is `ADMIN`.
 
@@ -56,11 +57,12 @@ Every response uses the envelope `{ success, message, data }`.
 | `/api/categories` | POST | admin | Create category |
 | `/api/categories/:id` | PATCH | admin | Update category |
 | `/api/categories/:id` | DELETE | admin | Delete category |
-| `/api/products` | GET | — | List/search products |
+| `/api/products` | GET | — | List/search/filter/sort products |
+| `/api/products/my-products` | GET | token | Products created by the current user |
 | `/api/products/:id` | GET | — | Get product |
-| `/api/products` | POST | admin | Create product |
-| `/api/products/:id` | PATCH | admin | Update product |
-| `/api/products/:id` | DELETE | admin | Delete product |
+| `/api/products` | POST | token | Create product (any signed-in user) |
+| `/api/products/:id` | PATCH | token | Update product (owner or admin) |
+| `/api/products/:id` | DELETE | token | Soft-delete product (owner or admin) |
 | `/api/reviews/product/:productId` | GET | — | Reviews for a product |
 | `/api/reviews` | POST | token | Create review |
 | `/api/reviews/:id` | PATCH | token | Update review (owner/admin) |
@@ -70,6 +72,11 @@ Every response uses the envelope `{ success, message, data }`.
 | `/api/orders` | GET | admin | List all orders |
 | `/api/orders/:id/status` | PATCH | admin | Update order status |
 | `/api/orders/:id` | DELETE | admin | Delete order |
+| `/api/cart` | GET | token | Get/current user's cart |
+| `/api/cart` | DELETE | token | Clear the cart |
+| `/api/cart/items` | POST | token | Add item to cart |
+| `/api/cart/items/:productId` | PATCH | token | Update item quantity |
+| `/api/cart/items/:productId` | DELETE | token | Remove item from cart |
 
 ---
 
@@ -341,11 +348,14 @@ Product shape:
   "stock": "integer",
   "imageUrl": "string|null",
   "categoryId": "uuid",
+  "userId": "uuid|null",
   "category": { "id": "uuid", "name": "string", "slug": "string" },
   "createdAt": "ISO date",
   "updatedAt": "ISO date"
 }
 ```
+
+`userId` is the selling user (admin/null for seeded products, otherwise the creator).
 
 ### `GET /api/products`
 
@@ -357,9 +367,13 @@ Query parameters:
 |---|---|---|---|
 | `categoryId` | uuid | — | Filter by category |
 | `search` | string | — | Case-insensitive `contains` on name/description |
+| `minPrice` | number >= 0 | — | Minimum price (inclusive) |
+| `maxPrice` | number > 0 | — | Maximum price (inclusive) |
 | `sort` | `newest` \| `price_asc` \| `price_desc` | `newest` | `newest` = createdAt desc |
 | `page` | integer > 0 | `1` | Coerced from string |
 | `limit` | integer 1–100 | `12` | Coerced from string |
+
+Negative `minPrice` / non-positive `maxPrice` → 400.
 
 Response `200`:
 
@@ -388,9 +402,26 @@ Response `200`:
 | 200 | Found |
 | 404 | Unknown or deleted product |
 
+### `GET /api/products/my-products`
+
+**Auth:** `verifyToken`
+
+Returns all non-deleted products created by the authenticated user (`userId` from `req.auth.sub`), newest first. Used by the client profile page ("My products").
+
+Response `200`:
+
+```json
+{ "success": true, "message": "My products fetched successfully", "data": { "products": [ { …product } ] } }
+```
+
+| Status | Condition |
+|---|---|
+| 200 | Success |
+| 401 | Unauthenticated |
+
 ### `POST /api/products`
 
-**Auth:** `verifyToken, authorizeAdmin`
+**Auth:** `verifyToken` (any signed-in user)
 
 Request body:
 
@@ -405,18 +436,17 @@ Request body:
 }
 ```
 
-`price` is rounded to 2 decimal places on write.
+`price` is rounded to 2 decimal places on write. `userId` is taken from `req.auth.sub` (the product is owned by the authenticated user).
 
 | Status | Condition |
 |---|---|
 | 201 | Created |
 | 400 | `Validation failed`, or category missing/deleted (`Category not found`) |
 | 401 | Unauthenticated |
-| 403 | Non-admin |
 
 ### `PATCH /api/products/:id`
 
-**Auth:** `verifyToken, authorizeAdmin`
+**Auth:** `verifyToken` (owner or admin)
 
 Request body (at least one field required; `imageUrl` may be `null` to clear):
 
@@ -438,12 +468,12 @@ A provided `categoryId` is validated against a non-deleted category (400 if miss
 | 200 | Updated |
 | 400 | `Validation failed`, or new category missing/deleted |
 | 401 | Unauthenticated |
-| 403 | Non-admin |
+| 403 | Not the owner and not admin |
 | 404 | Unknown or deleted product |
 
 ### `DELETE /api/products/:id`
 
-**Auth:** `verifyToken, authorizeAdmin`
+**Auth:** `verifyToken` (owner or admin)
 
 Soft-deletes a product (`isDeleted = true`).
 
@@ -451,7 +481,7 @@ Soft-deletes a product (`isDeleted = true`).
 |---|---|
 | 200 | Deleted (`data: null`) |
 | 401 | Unauthenticated |
-| 403 | Non-admin |
+| 403 | Not the owner and not admin |
 | 404 | Unknown or deleted product |
 
 ---
@@ -546,6 +576,8 @@ Order shape (user view):
   "userId": "uuid",
   "totalAmount": "number (2 dp)",
   "status": "PENDING|PROCESSING|SHIPPED|DELIVERED|CANCELLED",
+  "shippingAddress": "string",
+  "paymentMethod": "CARD|PAYPAL|COD",
   "createdAt": "ISO date",
   "updatedAt": "ISO date",
   "items": [
@@ -571,13 +603,17 @@ Creates an order and its items in a single `prisma.$transaction`. `userId` is ta
 Request body:
 
 ```json
-{ "items": [ { "productId": "uuid", "quantity": "integer > 0" } ] }
+{
+  "items": [ { "productId": "uuid", "quantity": "integer > 0" } ],
+  "shippingAddress": "string (required)",
+  "paymentMethod": "CARD|PAYPAL|COD (required)"
+}
 ```
 
 - At least one item is required.
 - Duplicate `productId` entries are merged (quantities summed).
 - Stock is validated against live DB prices and deducted race-safely (`updateMany` with a `stock >= quantity` guard).
-- `totalAmount` is computed from DB prices and rounded to 2 decimal places.
+- `totalAmount` is computed from DB prices and rounded to 2 decimal places (any client-supplied amount is ignored).
 - `status` defaults to `PENDING`.
 
 | Status | Condition |
@@ -640,3 +676,98 @@ Soft-deletes an order (`isDeleted = true`). Items are preserved.
 | 401 | Unauthenticated |
 | 403 | Non-admin |
 | 404 | Unknown or deleted order |
+
+---
+
+## Cart
+
+Every cart endpoint requires authentication (`verifyToken`) — **guests are blocked with 401**, so users must sign in before adding products to the cart. The cart is server-persisted in `carts` / `cart_items` (one cart per user), not in browser storage.
+
+Cart shape:
+
+```json
+{
+  "id": "uuid",
+  "items": [
+    {
+      "id": "uuid",
+      "productId": "uuid",
+      "quantity": "integer",
+      "product": { "id": "uuid", "name": "string", "price": "number", "imageUrl": "string|null" }
+    }
+  ],
+  "totalCount": "integer",
+  "totalPrice": "number (2 dp)"
+}
+```
+
+### `GET /api/cart`
+
+**Auth:** `verifyToken`
+
+Returns the current user's cart. If no cart exists yet, returns an empty cart shape (`id: ""`, no items).
+
+| Status | Condition |
+|---|---|
+| 200 | Success |
+| 401 | Unauthenticated |
+
+### `POST /api/cart/items`
+
+**Auth:** `verifyToken`
+
+Request body:
+
+```json
+{ "productId": "uuid (required)", "quantity": "integer > 0 (optional, default 1)" }
+```
+
+Adding an already-present product increments its quantity. Item quantity is capped at the product's available stock; an out-of-stock product is rejected.
+
+| Status | Condition |
+|---|---|
+| 200 | Added, capped at stock (`data: { cart }`) |
+| 400 | `Validation failed`, product missing/deleted (`Product not found`), or out of stock (`"<name>" is out of stock`) |
+| 401 | Unauthenticated |
+
+### `PATCH /api/cart/items/:productId`
+
+**Auth:** `verifyToken`
+
+Request body:
+
+```json
+{ "quantity": "integer >= 1 (required)" }
+```
+
+The quantity is capped at the product's available stock.
+
+| Status | Condition |
+|---|---|
+| 200 | Updated (`data: { cart }`) |
+| 400 | `Validation failed`, or product missing/out of stock |
+| 401 | Unauthenticated |
+| 404 | No cart or item not in cart (`Cart item not found`) |
+
+### `DELETE /api/cart/items/:productId`
+
+**Auth:** `verifyToken`
+
+Removes the item from the current user's cart.
+
+| Status | Condition |
+|---|---|
+| 200 | Removed (`data: { cart }`) |
+| 401 | Unauthenticated |
+| 404 | No cart or item not in cart (`Cart item not found`) |
+
+### `DELETE /api/cart`
+
+**Auth:** `verifyToken`
+
+Clears all items from the current user's cart.
+
+| Status | Condition |
+|---|---|
+| 200 | Cleared (`data: { cart }`) |
+| 401 | Unauthenticated |

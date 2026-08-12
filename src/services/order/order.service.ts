@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma';
-import { Prisma, OrderStatus } from '@prisma/client';
+import { Prisma, OrderStatus, PaymentMethod } from '@prisma/client';
 import { AppError } from '../../lib/AppError';
 
 export const orderItemSelect = {
@@ -17,6 +17,8 @@ export const orderSelect = {
   userId: true,
   totalAmount: true,
   status: true,
+  shippingAddress: true,
+  paymentMethod: true,
   createdAt: true,
   updatedAt: true,
   items: {
@@ -33,6 +35,8 @@ export const adminOrderSelect = {
   },
   totalAmount: true,
   status: true,
+  shippingAddress: true,
+  paymentMethod: true,
   createdAt: true,
   updatedAt: true,
   items: {
@@ -64,6 +68,8 @@ export const getAllOrders = () =>
 export const createOrder = async (data: {
   items: { productId: string; quantity: number }[];
   userId: string;
+  shippingAddress: string;
+  paymentMethod: PaymentMethod;
 }) => {
   const quantities = new Map<string, number>();
   for (const item of data.items) {
@@ -113,6 +119,8 @@ export const createOrder = async (data: {
       data: {
         userId: data.userId,
         totalAmount: Number(totalAmount.toFixed(2)),
+        shippingAddress: data.shippingAddress,
+        paymentMethod: data.paymentMethod,
         items: { create: orderItems },
       },
       select: orderSelect,

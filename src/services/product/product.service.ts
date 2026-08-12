@@ -10,6 +10,7 @@ export const productSelect = {
   stock: true,
   imageUrl: true,
   categoryId: true,
+  userId: true,
   category: {
     select: { id: true, name: true, slug: true },
   },
@@ -109,6 +110,13 @@ export const getProductById = (id: string) =>
     select: productSelect,
   });
 
+export const getMyProducts = (userId: string) =>
+  prisma.product.findMany({
+    where: { userId, isDeleted: false },
+    select: productSelect,
+    orderBy: { createdAt: 'desc' },
+  });
+
 const ensureCategoryExists = async (categoryId: string): Promise<void> => {
   const category = await prisma.category.findFirst({
     where: { id: categoryId, isDeleted: false },
@@ -127,6 +135,7 @@ export const createProduct = async (data: {
   stock?: number;
   imageUrl?: string | null;
   categoryId: string;
+  userId: string;
 }) => {
   await ensureCategoryExists(data.categoryId);
 
@@ -138,6 +147,7 @@ export const createProduct = async (data: {
       stock: data.stock ?? 0,
       imageUrl: data.imageUrl ?? null,
       categoryId: data.categoryId,
+      userId: data.userId,
     },
     select: productSelect,
   });
