@@ -20,6 +20,8 @@ export const productSelect = {
 export interface ProductFilters {
   categoryId?: string;
   search?: string;
+  minPrice?: number;
+  maxPrice?: number;
   sort?: 'newest' | 'price_asc' | 'price_desc';
   page?: number;
   limit?: number;
@@ -28,9 +30,13 @@ export interface ProductFilters {
 const buildWhere = ({
   categoryId,
   search,
+  minPrice,
+  maxPrice,
 }: {
   categoryId?: string;
   search?: string;
+  minPrice?: number;
+  maxPrice?: number;
 }): Prisma.ProductWhereInput => {
   const where: Prisma.ProductWhereInput = { isDeleted: false };
 
@@ -43,6 +49,13 @@ const buildWhere = ({
       { name: { contains: search, mode: 'insensitive' } },
       { description: { contains: search, mode: 'insensitive' } },
     ];
+  }
+
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    where.price = {
+      ...(minPrice !== undefined ? { gte: minPrice } : {}),
+      ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+    };
   }
 
   return where;
@@ -59,11 +72,13 @@ const buildOrderBy = (
 export const getAllProducts = async ({
   categoryId,
   search,
+  minPrice,
+  maxPrice,
   sort = 'newest',
   page = 1,
   limit = 12,
 }: ProductFilters = {}) => {
-  const where = buildWhere({ categoryId, search });
+  const where = buildWhere({ categoryId, search, minPrice, maxPrice });
   const orderBy = buildOrderBy(sort);
 
   const [products, total] = await Promise.all([

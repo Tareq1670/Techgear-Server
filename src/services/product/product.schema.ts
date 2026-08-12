@@ -26,6 +26,8 @@ export const updateProductSchema = z
 export const productQuerySchema = z.object({
   categoryId: z.string().uuid('categoryId must be a valid UUID').optional(),
   search: z.string().optional().transform((value) => value?.trim() || undefined),
+  minPrice: z.coerce.number().nonnegative('minPrice must be nonnegative').optional(),
+  maxPrice: z.coerce.number().positive('maxPrice must be positive').optional(),
   sort: z.enum(['newest', 'price_asc', 'price_desc']).optional(),
   page: z.coerce.number().int().positive('page must be a positive integer').default(1),
   limit: z.coerce.number().int().positive('limit must be a positive integer').max(100).default(12),
