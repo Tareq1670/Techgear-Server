@@ -1,6 +1,10 @@
 import { PrismaClient, Role, OrderStatus } from '@prisma/client';
+import { hashPassword } from 'better-auth/crypto';
 
 const prisma = new PrismaClient();
+
+const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@123';
+const SEED_USER_PASSWORD = process.env.SEED_USER_PASSWORD ?? 'User@123';
 
 const categories = [
   { name: 'Audio', description: 'Headphones, earbuds, and speakers' },
@@ -156,18 +160,59 @@ const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-async function main() {
-  await prisma.user.upsert({
-    where: { email: 'admin@techgear.test' },
-    update: {},
-    create: { email: 'admin@techgear.test', name: 'TechGear Admin', role: Role.ADMIN },
+// Better-Auth (v1.6.x) stores email/password credentials as an Account row with
+// providerId "credential" (password hash lives there, not on the User). Create it
+// so seeded users can sign in via the Next.js client.
+async function upsertCredentialAccount(userId: string, passwordHash: string) {
+  const existing = await prisma.account.findFirst({
+    where: { userId, providerId: 'credential' },
   });
+  if (existing) {
+    await prisma.account.update({
+      where: { id: existing.id },
+      data: { accountId: userId, password: passwordHash },
+    });
+  } else {
+    await prisma.account.create({
+      data: {
+        userId,
+        accountId: userId,
+        providerId: 'credential',
+        password: passwordHash,
+      },
+    });
+  }
+}
+
+async function main() {
+  const adminPassword = await hashPassword(SEED_ADMIN_PASSWORD);
+  const userPassword = await hashPassword(SEED_USER_PASSWORD);
+
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@techgear.test' },
+    update: { password: adminPassword, emailVerified: true },
+    create: {
+      email: 'admin@techgear.test',
+      name: 'TechGear Admin',
+      role: Role.ADMIN,
+      emailVerified: true,
+      password: adminPassword,
+    },
+  });
+  await upsertCredentialAccount(adminUser.id, adminPassword);
 
   const demoUser = await prisma.user.upsert({
     where: { email: 'user@techgear.test' },
-    update: {},
-    create: { email: 'user@techgear.test', name: 'Demo User', role: Role.USER },
+    update: { password: userPassword, emailVerified: true },
+    create: {
+      email: 'user@techgear.test',
+      name: 'Demo User',
+      role: Role.USER,
+      emailVerified: true,
+      password: userPassword,
+    },
   });
+  await upsertCredentialAccount(demoUser.id, userPassword);
 
   const categoryIds: Record<string, string> = {};
   for (const category of categories) {
@@ -241,7 +286,11 @@ async function main() {
     });
   }
 
-  console.log('Seed: users, categories, products, reviews, and orders created');
+  console.log(
+    `Seed: users, categories, products, reviews, and orders created\n` +
+      `  Admin login: admin@techgear.test / ${SEED_ADMIN_PASSWORD}\n` +
+      `  Demo login:  user@techgear.test / ${SEED_USER_PASSWORD}`,
+  );
 }
 
 main()
